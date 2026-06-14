@@ -1,216 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- Playables SDK -->
-<script>// Playables SDK v1.0.0
-// Game lifecycle bridge: rAF-based game-ready detection + event communication
-(function() {
-  'use strict';
-
-  // Idempotency: skip if already initialized (e.g., server-side injection
-  // followed by client-side inject-javascript via the Bloks webview component).
-  if (window.playablesSDK) return;
-
-  var HANDLER_NAME = 'playablesGameEventHandler';
-  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
-  var RAF_FRAME_THRESHOLD = 3;
-
-  var gameReadySent = false;
-  var firstInteractionSent = false;
-  var errorSent = false;
-  var frameCount = 0;
-  var originalRAF = window.requestAnimationFrame;
-
-  // --- Transport Layer ---
-
-  function hasIOSBridge() {
-    return !!(window.webkit &&
-              window.webkit.messageHandlers &&
-              window.webkit.messageHandlers[HANDLER_NAME]);
-  }
-
-  function hasAndroidBridge() {
-    return !!(window[ANDROID_BRIDGE_NAME] &&
-              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
-  }
-
-  function isInIframe() {
-    return !!(window.parent && window.parent !== window);
-  }
-
-  function sendEvent(eventName, payload) {
-    var message = {
-      type: eventName,
-      payload: payload || {},
-      timestamp: Date.now()
-    };
-
-    if (hasIOSBridge()) {
-      try {
-        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
-      } catch (e) { /* ignore */ }
-      return;
-    }
-
-    if (hasAndroidBridge()) {
-    try {
-      var p = payload || {};
-      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
-      p.timestamp = message.timestamp;
-      window[ANDROID_BRIDGE_NAME].postEvent(
-        eventName,
-        JSON.stringify(p)
-      );
-    } catch (e) { /* ignore */ }
-    return;
-  }
-
-    if (isInIframe()) {
-      try {
-        window.parent.postMessage(message, '*');
-      } catch (e) { /* ignore */ }
-      return;
-    }
-  }
-
-  // --- rAF Game-Ready Detection ---
-
-  function onFrame() {
-    if (gameReadySent) return;
-
-    frameCount++;
-    if (frameCount >= RAF_FRAME_THRESHOLD) {
-      gameReadySent = true;
-      sendEvent('game_ready', {
-        frame_count: frameCount,
-        detected_at: Date.now()
-      });
-      return;
-    }
-
-    originalRAF.call(window, onFrame);
-  }
-
-  if (originalRAF) {
-    window.requestAnimationFrame = function(callback) {
-      if (!gameReadySent) {
-        return originalRAF.call(window, function(timestamp) {
-          frameCount++;
-          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
-            gameReadySent = true;
-            sendEvent('game_ready', {
-              frame_count: frameCount,
-              detected_at: Date.now()
-            });
-          }
-          callback(timestamp);
-        });
-      }
-      return originalRAF.call(window, callback);
-    };
-  }
-
-  // --- First User Interaction Detection ---
-
-  function setupFirstInteractionDetection() {
-    var events = ['touchstart', 'mousedown', 'keydown'];
-
-    function onFirstInteraction() {
-      if (firstInteractionSent) return;
-      firstInteractionSent = true;
-      sendEvent('user_interaction_start', null);
-
-      for (var i = 0; i < events.length; i++) {
-        document.removeEventListener(events[i], onFirstInteraction, true);
-      }
-    }
-
-    for (var i = 0; i < events.length; i++) {
-      document.addEventListener(events[i], onFirstInteraction, true);
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
-  } else {
-    setupFirstInteractionDetection();
-  }
-
-  // --- Auto Error Capture ---
-
-  window.addEventListener('error', function(event) {
-    if (errorSent) return;
-    errorSent = true;
-    sendEvent('error', {
-      message: event.message || 'Unknown error',
-      source: event.filename || '',
-      lineno: event.lineno || 0,
-      colno: event.colno || 0,
-      auto_captured: true
-    });
-  });
-
-  window.addEventListener('unhandledrejection', function(event) {
-    if (errorSent) return;
-    errorSent = true;
-    var reason = event.reason;
-    sendEvent('error', {
-      message: (reason instanceof Error) ? reason.message : String(reason),
-      type: 'unhandled_promise_rejection',
-      auto_captured: true
-    });
-  });
-
-  // --- Public API ---
-
-  window.playablesSDK = {
-    complete: function(score) {
-      sendEvent('game_ended', {
-        score: score,
-        completed: true
-      });
-    },
-
-    error: function(message) {
-      if (errorSent) return;
-      errorSent = true;
-      sendEvent('error', {
-        message: message || 'Unknown error',
-        auto_captured: false
-      });
-    },
-
-    sendEvent: function(eventName, payload) {
-      if (!eventName || typeof eventName !== 'string') return;
-      sendEvent(eventName, payload);
-    }
-  };
-
-  // Kick off rAF detection in case no game code calls rAF immediately
-  if (originalRAF) {
-    originalRAF.call(window, onFrame);
-  }
-})();</script>
-<!-- PLAYABLE_TOUCH_PATCH_V1 --><script>
-(function() {
-  if (window.__playableTouchPatchInstalled) return;
-  window.__playableTouchPatchInstalled = true;
-  var origAdd = EventTarget.prototype.addEventListener;
-  var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
-  EventTarget.prototype.addEventListener = function(type, listener, options) {
-    if (blockedTypes[type]) {
-      if (options === undefined || options === null) {
-        options = { passive: true };
-      } else if (typeof options === 'boolean') {
-        options = { capture: options, passive: true };
-      } else {
-        options = Object.assign({}, options, { passive: true });
-      }
-    }
-    return origAdd.call(this, type, listener, options);
-  };
-})();
-</script><script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Growvt - We grow brands with AI & Ads</title>
@@ -868,6 +658,12 @@ section {
   overflow: hidden;
 }
 
+.work-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .work-img::after {
   content: '';
   position: absolute;
@@ -908,6 +704,21 @@ section {
 .work-card p {
   color: var(--text-muted);
   line-height: 1.7;
+}
+
+.work-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--secondary);
+  transition: gap 0.2s ease;
+}
+
+.work-link:hover {
+  gap: 0.7rem;
 }
 
 /* About Section */
@@ -1353,7 +1164,7 @@ textarea.form-control {
         <h2 class="section-title">Selected Work</h2>
         <p class="section-desc">Real results for real businesses across Bangladesh</p>
       </div>
-      <div class="work-grid">
+      <div class="work-grid" id="workGrid">
         <div class="work-card reveal">
           <div class="work-img"></div>
           <div class="work-content">
@@ -1519,7 +1330,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Custom cursor
   const cursor = document.querySelector('.cursor');
   const cursorDot = document.querySelector('.cursor-dot');
-  
+
   if (window.matchMedia('(pointer: fine)').matches) {
     document.addEventListener('mousemove', function(e) {
       cursor.style.left = e.clientX + 'px';
@@ -1548,7 +1359,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Mobile menu
   const menuToggle = document.getElementById('menuToggle');
   const navLinks = document.getElementById('navLinks');
-  
+
   menuToggle.addEventListener('click', function() {
     menuToggle.classList.toggle('active');
     navLinks.classList.toggle('active');
@@ -1564,7 +1375,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Active nav link on scroll
   const sections = document.querySelectorAll('section');
   const navItems = document.querySelectorAll('.nav-link');
-  
+
   window.addEventListener('scroll', function() {
     let current = '';
     sections.forEach(section => {
@@ -1608,7 +1419,7 @@ document.addEventListener('DOMContentLoaded', function() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
   }
-  
+
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
@@ -1634,7 +1445,7 @@ document.addEventListener('DOMContentLoaded', function() {
       let dx = mouse.x - this.x;
       let dy = mouse.y - this.y;
       let distance = Math.sqrt(dx * dx + dy * dy);
-      
+
       if (distance < mouse.radius) {
         let force = (mouse.radius - distance) / mouse.radius;
         let angle = Math.atan2(dy, dx);
@@ -1678,7 +1489,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let dx = particles[i].x - particles[j].x;
         let dy = particles[i].y - particles[j].y;
         let distance = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (distance < 120) {
           ctx.strokeStyle = `rgba(99, 102, 241, ${0.15 * (1 - distance / 120)})`;
           ctx.lineWidth = 0.5;
@@ -1693,12 +1504,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     particles.forEach(particle => {
       particle.update();
       particle.draw();
     });
-    
+
     connectParticles();
     requestAnimationFrame(animate);
   }
@@ -1709,19 +1520,79 @@ document.addEventListener('DOMContentLoaded', function() {
   const contactForm = document.getElementById('contactForm');
   contactForm.addEventListener('submit', function(e) {
     e.preventDefault();
-    
+
     const name = document.getElementById('name').value;
     const email = document.getElementById('email').value;
     const service = document.getElementById('service').value;
     const message = document.getElementById('message').value;
-    
+
     const whatsappMessage = `Hi Growvt!%0A%0AName: ${name}%0AEmail: ${email}%0AService: ${service}%0A%0AMessage: ${message}`;
     window.open(`https://wa.me/8801826543488?text=${whatsappMessage}`, '_blank');
-    
+
     contactForm.reset();
   });
+
+  // ── SANITY CMS: LOAD WORK PROJECTS ──
+  const SANITY_PROJECT_ID = 'eh1h5wbi';
+  const SANITY_DATASET = 'production';
+
+  const tagMap = {
+    chatbot: 'AI Automation',
+    ads: 'Paid Ads',
+    web: 'Web Development',
+    design: 'Graphic Design'
+  };
+
+  function urlForImage(ref) {
+    const parts = ref.split('-');
+    const id = parts[1];
+    const dims = parts[2];
+    const format = parts[3];
+    return `https://cdn.sanity.io/images/${SANITY_PROJECT_ID}/${SANITY_DATASET}/${id}-${dims}.${format}`;
+  }
+
+  async function loadWorkProjects() {
+    const query = encodeURIComponent(`*[_type == "project" && featured == true] | order(order asc){
+      title, category, description, link, "imageRef": image.asset._ref
+    }`);
+    const url = `https://${SANITY_PROJECT_ID}.api.sanity.io/v2023-01-01/data/query/${SANITY_DATASET}?query=${query}`;
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      const projects = data.result;
+
+      if (!projects || projects.length === 0) return; // keep default cards
+
+      const grid = document.getElementById('workGrid');
+      grid.innerHTML = '';
+
+      projects.forEach((p) => {
+        const tag = tagMap[p.category] || 'Project';
+        const imgContent = p.imageRef
+          ? `<img src="${urlForImage(p.imageRef)}" alt="${p.title}">`
+          : '';
+
+        const card = document.createElement('div');
+        card.className = 'work-card reveal active';
+        card.innerHTML = `
+          <div class="work-img">${imgContent}</div>
+          <div class="work-content">
+            <span class="work-tag">${tag}</span>
+            <h3>${p.title}</h3>
+            <p>${p.description}</p>
+            ${p.link ? `<a href="${p.link}" target="_blank" class="work-link">View Live Demo →</a>` : ''}
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    } catch (err) {
+      console.log('Could not load projects from Sanity:', err);
+    }
+  }
+
+  loadWorkProjects();
 });
 </script>
-<script>(function(){document.addEventListener("click",function(e){var a=e.target.closest("[data-product-id]");if(!a)return;e.preventDefault();var pid=a.getAttribute("data-product-id");if(pid)parent.postMessage({type:"ecto-artifact-link-click",productId:pid},"*")})})();</script>
 </body>
 </html>
